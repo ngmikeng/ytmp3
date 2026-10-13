@@ -1,0 +1,26 @@
+[project]
+name = "ytmp3"
+version = "0.1.0"
+description = "Download YouTube audio as MP3 (no login, no API key). Works on macOS and Windows."
+readme = "README.md"
+authors = [
+    { name = "MN Research" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "deno>=2.9.7",
+    "static-ffmpeg>=3.0",
+    "yt-dlp[default]>=2026.8.19",
+]
+
+[project.scripts]
+ytmp3 = "ytmp3.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
