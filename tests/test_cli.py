@@ -41,3 +41,15 @@ def test_main_missing_ffmpeg_is_setup_error(monkeypatch, capsys):
     monkeypatch.setattr(cli, "resolve_ffmpeg", boom)
     assert cli.main(["https://x"]) == cli.EXIT_SETUP
     assert "ffmpeg missing" in capsys.readouterr().err
+
+
+def test_parser_accepts_cookie_flags():
+    args = cli.build_parser().parse_args(["https://x", "--cookies-from-browser", "firefox", "--cookies", "c.txt"])
+    assert args.cookies_from_browser == "firefox"
+    assert args.cookies == Path("c.txt")
+
+
+def test_main_bad_cookies_browser_is_setup_error(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "resolve_ffmpeg", lambda _: None)
+    assert cli.main(["https://x", "--cookies-from-browser", "netscape"]) == cli.EXIT_SETUP
+    assert "unsupported browser" in capsys.readouterr().err

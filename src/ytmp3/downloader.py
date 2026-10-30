@@ -6,7 +6,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from yt_dlp import YoutubeDL
+from yt_dlp import YoutubeDL, parse_options
 from yt_dlp.postprocessor.metadataparser import MetadataParserPP
 from yt_dlp.utils import DownloadError
 
@@ -63,9 +63,12 @@ def build_opts(
     verbose: bool = False,
     ffmpeg_dir: Path | None = None,
     js_runtimes: dict[str, dict] | None = None,
+    cookies_file: Path | None = None,
+    cookies_from_browser: str | None = None,
 ) -> dict:
     if quality not in QUALITIES:
         raise ValueError(f"quality must be one of {', '.join(QUALITIES)}")
+    cookies_spec = parse_browser_spec(cookies_from_browser) if cookies_from_browser else None
 
     # Order mirrors yt-dlp's own CLI: pre_process -> before_dl -> post_process.
     postprocessors: list[dict] = []
@@ -104,7 +107,19 @@ def build_opts(
         opts["ffmpeg_location"] = str(ffmpeg_dir)
     if js_runtimes:
         opts["js_runtimes"] = js_runtimes
+    if cookies_file:
+        opts["cookiefile"] = str(cookies_file)
+    if cookies_spec:
+        opts["cookiesfrombrowser"] = cookies_spec
     return opts
+
+
+def parse_browser_spec(spec: str) -> tuple:
+    """Parse BROWSER[+KEYRING][:PROFILE][::CONTAINER] exactly as yt-dlp's --cookies-from-browser does."""
+    try:
+        return parse_options(["--cookies-from-browser", spec]).ydl_opts["cookiesfrombrowser"]
+    except Exception as e:  # yt-dlp raises OptParseError with a usage banner; keep only the reason
+        raise ValueError(str(e).strip().rpartition("error: ")[2]) from None
 
 
 def download(urls: list[str], opts: dict) -> Result:

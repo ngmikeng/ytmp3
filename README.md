@@ -55,6 +55,8 @@ Always put URLs in quotes. `&` and `?` are special characters in zsh and PowerSh
 | `--no-metadata` | Skip ID3 tags and cover art |
 | `--overwrite` | Re-download files that already exist (they are skipped by default) |
 | `--ffmpeg PATH` | Use a specific ffmpeg binary or folder |
+| `--cookies-from-browser BROWSER[:PROFILE]` | Use cookies from a browser you're signed in to YouTube with (`firefox`, `chrome`, `safari`, `edge`, `brave`, ...). Only needed for the bot check below |
+| `--cookies FILE` | Use a Netscape-format `cookies.txt` file instead |
 | `-v, --verbose` | Show full yt-dlp output |
 
 Exit codes: `0` means everything succeeded, `1` means some URLs failed (they are listed in the summary), and `2` means a setup error such as no URLs or no ffmpeg.
@@ -72,6 +74,19 @@ YouTube changes things often, and a new yt-dlp release almost always fixes it:
 uv tool upgrade ytmp3                                       # installed tool
 uv lock --upgrade-package yt-dlp && uv sync                 # dev checkout
 ```
+
+If you still get **"Sign in to confirm you're not a bot"**, YouTube has flagged your network. Pass cookies from a browser where you're signed in to YouTube:
+
+```sh
+ytmp3 --cookies-from-browser firefox "https://www.youtube.com/watch?v=..."
+ytmp3 --cookies-from-browser "chrome:Profile 1" "https://..."   # a specific Chrome profile
+```
+
+- Chrome on macOS asks for Keychain access the first time. Click "Allow".
+- Chrome/Edge on Windows lock their cookie database while running, so close the browser first or use Firefox.
+- Safari needs Full Disk Access for your terminal app (System Settings → Privacy & Security).
+
+Login stays optional. It's only a workaround when YouTube asks for it.
 
 ## Development
 

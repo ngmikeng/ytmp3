@@ -19,6 +19,7 @@ def test_defaults(tmp_path: Path):
     extract = next(pp for pp in opts["postprocessors"] if pp["key"] == "FFmpegExtractAudio")
     assert extract == {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
     assert _keys(opts) == ["MetadataParser", "FFmpegThumbnailsConvertor", "FFmpegExtractAudio", "FFmpegMetadata", "EmbedThumbnail"]
+    assert "cookiefile" not in opts and "cookiesfrombrowser" not in opts
 
 
 def test_no_metadata(tmp_path: Path):
@@ -35,6 +36,17 @@ def test_quality_and_flags(tmp_path: Path):
     assert opts["overwrites"] is True
     assert opts["ffmpeg_location"] == str(tmp_path)
     assert opts["js_runtimes"] == {"node": {"path": "/bin/node"}}
+
+
+def test_cookies(tmp_path: Path):
+    opts = build_opts(tmp_path, cookies_file=tmp_path / "cookies.txt", cookies_from_browser="chrome:Profile 1")
+    assert opts["cookiefile"] == str(tmp_path / "cookies.txt")
+    assert opts["cookiesfrombrowser"] == ("chrome", "Profile 1", None, None)
+
+
+def test_invalid_cookies_browser(tmp_path: Path):
+    with pytest.raises(ValueError, match="unsupported browser"):
+        build_opts(tmp_path, cookies_from_browser="netscape")
 
 
 def test_invalid_quality(tmp_path: Path):

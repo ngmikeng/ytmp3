@@ -26,6 +26,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-metadata", action="store_true", help="skip ID3 tags and cover art")
     p.add_argument("--overwrite", action="store_true", help="overwrite existing files")
     p.add_argument("--ffmpeg", metavar="PATH", help="path to ffmpeg binary or its directory")
+    p.add_argument("--cookies-from-browser", metavar="BROWSER[:PROFILE]",
+                   help="use cookies from a signed-in browser (firefox, chrome, safari, ...) to get past YouTube's bot check")
+    p.add_argument("--cookies", type=Path, metavar="FILE", help="Netscape-format cookies.txt file")
     p.add_argument("-v", "--verbose", action="store_true", help="show full yt-dlp output")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
@@ -75,18 +78,24 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_SETUP
 
     output = args.output.expanduser().resolve()
-    output.mkdir(parents=True, exist_ok=True)
 
-    opts = build_opts(
-        output_dir=output,
-        quality=args.quality,
-        playlist=not args.no_playlist,
-        metadata=not args.no_metadata,
-        overwrite=args.overwrite,
-        verbose=args.verbose,
-        ffmpeg_dir=ffmpeg_dir,
-        js_runtimes=resolve_js_runtimes(),
-    )
+    try:
+        opts = build_opts(
+            output_dir=output,
+            quality=args.quality,
+            playlist=not args.no_playlist,
+            metadata=not args.no_metadata,
+            overwrite=args.overwrite,
+            verbose=args.verbose,
+            ffmpeg_dir=ffmpeg_dir,
+            js_runtimes=resolve_js_runtimes(),
+            cookies_file=args.cookies.expanduser() if args.cookies else None,
+            cookies_from_browser=args.cookies_from_browser,
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_SETUP
+    output.mkdir(parents=True, exist_ok=True)
     try:
         result = download(urls, opts)
     except KeyboardInterrupt:
