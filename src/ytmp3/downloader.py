@@ -12,6 +12,7 @@ from yt_dlp.utils import DownloadError
 
 QUALITIES = ("128", "192", "256", "320")
 RESOLUTIONS = ("360", "480", "720", "1080", "1440", "2160", "best")
+RETRIES = {"retries": 10, "fragment_retries": 10, "file_access_retries": 3, "extractor_retries": 3}
 
 # Playlist entries go in "<playlist title>/NNN - <title> [id].<ext>"; single videos are flat.
 # For single videos the directory part is empty; yt-dlp drops empty segments on Windows
@@ -120,6 +121,9 @@ def build_opts(
         "noplaylist": not playlist,
         "ignoreerrors": "only_download" if playlist else False,
         "overwrites": overwrite,
+        # yt-dlp's CLI defaults. Through the Python API these are unset, which means *no* retries,
+        # so a single stalled read (common with large video streams) would fail the whole video.
+        **RETRIES,
         "windowsfilenames": True,  # Windows-safe names on every OS
         "logger": _Logger(verbose),
         "noprogress": not verbose,

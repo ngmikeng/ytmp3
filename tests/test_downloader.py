@@ -22,6 +22,16 @@ def test_defaults(tmp_path: Path):
     assert "cookiefile" not in opts and "cookiesfrombrowser" not in opts
 
 
+def test_retries_match_yt_dlp_cli_defaults(tmp_path: Path):
+    # Unset via the API means 0 retries; one read timeout would then fail the whole download.
+    from yt_dlp import parse_options
+
+    cli_defaults = parse_options([]).ydl_opts
+    for opts in (build_opts(tmp_path), build_opts(tmp_path, video=True)):
+        for key in ("retries", "fragment_retries", "file_access_retries", "extractor_retries"):
+            assert opts[key] == cli_defaults[key], key
+
+
 def test_no_metadata(tmp_path: Path):
     opts = build_opts(tmp_path, metadata=False)
     assert _keys(opts) == ["FFmpegExtractAudio"]
