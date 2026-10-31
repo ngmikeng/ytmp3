@@ -8,20 +8,24 @@ from pathlib import Path
 
 from ytmp3 import __version__
 from ytmp3.deps import DependencyError, resolve_ffmpeg, resolve_js_runtimes
-from ytmp3.downloader import QUALITIES, build_opts, download
+from ytmp3.downloader import QUALITIES, RESOLUTIONS, build_opts, download
 
 EXIT_OK, EXIT_FAILURES, EXIT_SETUP = 0, 1, 2
+DEFAULT_RESOLUTION = "1080"
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="ytmp3",
-        description="Download YouTube audio as MP3. No login or API key needed.",
+        description="Download YouTube audio as MP3 or video as MP4. No login or API key needed.",
     )
     p.add_argument("urls", nargs="*", metavar="URL", help="video or playlist URL(s)")
     p.add_argument("-f", "--file", type=Path, help="text file with one URL per line (# comments allowed)")
     p.add_argument("-o", "--output", type=Path, default=Path("downloads"), help="output directory (default: ./downloads)")
+    p.add_argument("--mp4", action="store_true", help="download the video as MP4 instead of audio as MP3")
     p.add_argument("-q", "--quality", choices=QUALITIES, default="192", help="MP3 bitrate in kbps (default: 192)")
+    p.add_argument("-r", "--resolution", choices=RESOLUTIONS, default=None,
+                   help=f"with --mp4: maximum video height (default: {DEFAULT_RESOLUTION}); lower is used if unavailable")
     p.add_argument("--no-playlist", action="store_true", help="for URLs with both v= and list=, download only the video")
     p.add_argument("--no-metadata", action="store_true", help="skip ID3 tags and cover art")
     exists = p.add_mutually_exclusive_group()
@@ -90,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_SETUP
 
     output = args.output.expanduser().resolve()
+    if args.resolution and not args.mp4:
+        print("warning: --resolution only applies with --mp4; ignoring it", file=sys.stderr)
 
     try:
         opts = build_opts(
@@ -103,13 +109,15 @@ def main(argv: list[str] | None = None) -> int:
             js_runtimes=resolve_js_runtimes(),
             cookies_file=args.cookies.expanduser() if args.cookies else None,
             cookies_from_browser=args.cookies_from_browser,
+            video=args.mp4,
+            resolution=args.resolution or DEFAULT_RESOLUTION,
         )
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_SETUP
     output.mkdir(parents=True, exist_ok=True)
     try:
-        result = download(urls, opts, on_exists_mode(args))
+        result = download(urls, opts, on_exists_mode(args), ext="mp4" if args.mp4 else "mp3")
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         return 130

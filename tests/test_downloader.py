@@ -54,6 +54,42 @@ def test_invalid_quality(tmp_path: Path):
         build_opts(tmp_path, quality="999")
 
 
+def test_video_defaults(tmp_path: Path):
+    opts = build_opts(tmp_path, video=True)
+    assert opts["format"] == "bv*+ba/b"
+    assert opts["format_sort"] == ["res:1080", "vcodec:h264", "acodec:aac"]
+    assert opts["merge_output_format"] == "mp4"
+    assert _keys(opts) == ["MetadataParser", "FFmpegThumbnailsConvertor", "FFmpegVideoRemuxer", "FFmpegMetadata", "EmbedThumbnail"]
+    assert next(pp for pp in opts["postprocessors"] if pp["key"] == "FFmpegVideoRemuxer")["preferedformat"] == "mp4"
+
+
+def test_video_best_resolution_and_no_metadata(tmp_path: Path):
+    opts = build_opts(tmp_path, video=True, resolution="best", metadata=False)
+    assert not any(s.startswith("res:") for s in opts["format_sort"])
+    assert _keys(opts) == ["FFmpegVideoRemuxer"]
+    assert build_opts(tmp_path, video=True, resolution="720")["format_sort"][0] == "res:720"
+
+
+def test_audio_mode_has_no_video_options(tmp_path: Path):
+    opts = build_opts(tmp_path)
+    assert "format_sort" not in opts and "merge_output_format" not in opts
+
+
+def test_invalid_resolution(tmp_path: Path):
+    with pytest.raises(ValueError, match="resolution"):
+        build_opts(tmp_path, video=True, resolution="999")
+
+
+def test_skip_checks_the_final_mp4(tmp_path: Path):
+    with YoutubeDL(build_opts(tmp_path, video=True, metadata=False)) as ydl:
+        match = _existing_filter(ydl, "skip", ext="mp4")
+        info = {"id": "abc", "title": "Clip", "ext": "webm"}
+        (tmp_path / "Clip [abc].mp3").write_bytes(b"")  # the audio version doesn't count
+        assert match(info) is None
+        (tmp_path / "Clip [abc].mp4").write_bytes(b"")
+        assert "Clip [abc].mp4 already exists" in match(info)
+
+
 def _filename(tmp_path: Path, info: dict) -> Path:
     opts = build_opts(tmp_path, metadata=False)
     with YoutubeDL(opts) as ydl:

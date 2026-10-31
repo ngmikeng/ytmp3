@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from ytmp3 import cli
+from ytmp3.downloader import Result
 
 
 def test_read_url_file_handles_bom_crlf_comments(tmp_path: Path):
@@ -22,6 +23,39 @@ def test_parser_defaults():
     assert args.quality == "192"
     assert args.output == Path("downloads")
     assert not args.no_playlist and not args.no_metadata
+
+
+def test_parser_video_flags():
+    parse = cli.build_parser().parse_args
+    args = parse(["https://x"])
+    assert args.mp4 is False and args.resolution is None
+    args = parse(["https://x", "--mp4", "-r", "720"])
+    assert args.mp4 is True and args.resolution == "720"
+    with pytest.raises(SystemExit):
+        parse(["https://x", "--mp4", "-r", "999"])
+
+
+def test_main_passes_video_options(monkeypatch, tmp_path: Path):
+    seen = {}
+
+    def fake_download(urls, opts, on_exists, ext):
+        seen.update(opts=opts, ext=ext)
+        return Result()
+
+    monkeypatch.setattr(cli, "resolve_ffmpeg", lambda _: None)
+    monkeypatch.setattr(cli, "resolve_js_runtimes", lambda: {})
+    monkeypatch.setattr(cli, "download", fake_download)
+    assert cli.main(["https://x", "--mp4", "-r", "480", "-o", str(tmp_path)]) == cli.EXIT_OK
+    assert seen["ext"] == "mp4"
+    assert seen["opts"]["format_sort"][0] == "res:480"
+
+
+def test_resolution_without_mp4_warns(monkeypatch, capsys, tmp_path: Path):
+    monkeypatch.setattr(cli, "resolve_ffmpeg", lambda _: None)
+    monkeypatch.setattr(cli, "resolve_js_runtimes", lambda: {})
+    monkeypatch.setattr(cli, "download", lambda urls, opts, on_exists, ext: Result())
+    assert cli.main(["https://x", "-r", "720", "-o", str(tmp_path)]) == cli.EXIT_OK
+    assert "only applies with --mp4" in capsys.readouterr().err
 
 
 def test_parser_rejects_bad_quality():

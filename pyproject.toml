@@ -1,7 +1,7 @@
 [project]
 name = "ytmp3"
 version = "0.1.0"
-description = "Download YouTube audio as MP3 (no login, no API key). Works on macOS and Windows."
+description = "Download YouTube audio as MP3 or video as MP4 (no login, no API key). Works on macOS and Windows."
 readme = "README.md"
 authors = [
     { name = "MN Research" }

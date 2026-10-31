@@ -1,12 +1,13 @@
 # ytmp3
 
-Download YouTube audio as MP3 from the command line. It needs **no login and no API key**, and runs on **macOS and Windows** (Linux works too).
+Download YouTube audio as MP3 or video as MP4 from the command line. It needs **no login and no API key**, and runs on **macOS and Windows** (Linux works too).
 
 The tool is a thin wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp). Features:
 
 - 128 / 192 / 256 / 320 kbps MP3
+- MP4 video (`--mp4`) up to 4K, preferring H.264/AAC so it plays everywhere
 - Embedded title/artist/date tags and the thumbnail as cover art
-- Playlists: each video is saved as `Playlist Title/001 - Title [id].mp3`
+- Playlists: each video is saved as `Playlist Title/001 - Title [id].mp3` (or `.mp4`)
 - Batch downloads from a text file
 - Zero setup for ffmpeg and the JavaScript runtime. If they aren't installed, a copy is bundled or downloaded on first run.
 
@@ -40,6 +41,8 @@ ytmp3 "https://youtu.be/jNQXAC9IVRw" -q 320 -o ~/Music              # 320 kbps i
 ytmp3 "https://www.youtube.com/playlist?list=PL..."                 # whole playlist
 ytmp3 "https://www.youtube.com/watch?v=ID&list=PL..." --no-playlist # just that video
 ytmp3 -f urls.txt                                                   # batch file
+ytmp3 --mp4 "https://www.youtube.com/watch?v=jNQXAC9IVRw"           # video as MP4 (up to 1080p)
+ytmp3 --mp4 -r 720 "https://youtu.be/jNQXAC9IVRw"                   # MP4, at most 720p
 ```
 
 Always put URLs in quotes. `&` and `?` are special characters in zsh and PowerShell.
@@ -50,9 +53,11 @@ Always put URLs in quotes. `&` and `?` are special characters in zsh and PowerSh
 |---|---|
 | `-f, --file FILE` | Read URLs from a text file (can be combined with URLs on the command line) |
 | `-o, --output DIR` | Output directory (default `./downloads`) |
-| `-q, --quality` | `128`, `192` (default), `256` or `320` kbps |
+| `--mp4` | Download the video as MP4 instead of audio as MP3 |
+| `-q, --quality` | MP3 only: `128`, `192` (default), `256` or `320` kbps |
+| `-r, --resolution` | MP4 only: maximum height `360`, `480`, `720`, `1080` (default), `1440`, `2160` or `best`. The next lower one is used if the video doesn't have it |
 | `--no-playlist` | For `watch?v=…&list=…` URLs, download only the video |
-| `--no-metadata` | Skip ID3 tags and cover art |
+| `--no-metadata` | Skip tags and cover art |
 | `--overwrite` | Re-download files that already exist, without asking |
 | `--skip-existing` | Skip files that already exist, without asking |
 | `--ffmpeg PATH` | Use a specific ffmpeg binary or folder |
@@ -60,7 +65,7 @@ Always put URLs in quotes. `&` and `?` are special characters in zsh and PowerSh
 | `--cookies FILE` | Use a Netscape-format `cookies.txt` file instead |
 | `-v, --verbose` | Show full yt-dlp output |
 
-When an MP3 is already there, ytmp3 asks `overwrite? [y]es / [N]o / [a]ll / [s]kip all` (`a`/`s` answer for the rest of a playlist or batch). When it isn't run from a terminal (piped, scheduled, CI) nobody can answer, so existing files are skipped.
+When the MP3 (or MP4) is already there, ytmp3 asks `overwrite? [y]es / [N]o / [a]ll / [s]kip all` (`a`/`s` answer for the rest of a playlist or batch). When it isn't run from a terminal (piped, scheduled, CI) nobody can answer, so existing files are skipped.
 
 Exit codes: `0` means everything succeeded, `1` means some URLs failed (they are listed in the summary), and `2` means a setup error such as no URLs or no ffmpeg.
 

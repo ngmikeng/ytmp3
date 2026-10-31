@@ -1,4 +1,4 @@
-"""Thin wrapper around yt-dlp that downloads audio and converts it to MP3."""
+"""Thin wrapper around yt-dlp that downloads audio as MP3 or video as MP4."""
 
 from __future__ import annotations
 
@@ -11,8 +11,9 @@ from yt_dlp.postprocessor.metadataparser import MetadataParserPP
 from yt_dlp.utils import DownloadError
 
 QUALITIES = ("128", "192", "256", "320")
+RESOLUTIONS = ("360", "480", "720", "1080", "1440", "2160", "best")
 
-# Playlist entries go in "<playlist title>/NNN - <title> [id].mp3"; single videos are flat.
+# Playlist entries go in "<playlist title>/NNN - <title> [id].<ext>"; single videos are flat.
 # For single videos the directory part is empty; yt-dlp drops empty segments on Windows
 # and "a//b" is equivalent to "a/b" on POSIX.
 # Titles are truncated (in UTF-8 bytes) rather than the whole name, so "[id]" is never cut off
@@ -48,10 +49,15 @@ class _Logger:
         print(msg, file=sys.stderr)
 
 
-def _progress_hook(d: dict) -> None:
-    if d["status"] == "finished":
-        name = Path(d.get("filename", "")).name
-        print(f"  downloaded: {name} -> converting to mp3...", file=sys.stderr)
+def _progress_hook(ext: str):
+    step = "merging into mp4" if ext == "mp4" else f"converting to {ext}"
+
+    def hook(d: dict) -> None:
+        if d["status"] == "finished":
+            name = Path(d.get("filename", "")).name
+            print(f"  downloaded: {name} -> {step}...", file=sys.stderr)
+
+    return hook
 
 
 def build_opts(
@@ -65,10 +71,15 @@ def build_opts(
     js_runtimes: dict[str, dict] | None = None,
     cookies_file: Path | None = None,
     cookies_from_browser: str | None = None,
+    video: bool = False,
+    resolution: str = "1080",
 ) -> dict:
     if quality not in QUALITIES:
         raise ValueError(f"quality must be one of {', '.join(QUALITIES)}")
+    if resolution not in RESOLUTIONS:
+        raise ValueError(f"resolution must be one of {', '.join(RESOLUTIONS)}")
     cookies_spec = parse_browser_spec(cookies_from_browser) if cookies_from_browser else None
+    ext = "mp4" if video else "mp3"
 
     # Order mirrors yt-dlp's own CLI: pre_process -> before_dl -> post_process.
     postprocessors: list[dict] = []
@@ -82,15 +93,26 @@ def build_opts(
             },
             {"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"},
         ]
-    postprocessors.append({"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": quality})
+    if video:
+        # Merged downloads already end up as mp4; this catches a single-file (e.g. webm) fallback.
+        postprocessors.append({"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"})
+    else:
+        postprocessors.append({"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": quality})
     if metadata:
         postprocessors += [
             {"key": "FFmpegMetadata", "add_metadata": True},
             {"key": "EmbedThumbnail", "already_have_thumbnail": False},
         ]
 
+    if video:
+        # Highest resolution up to the cap; at that resolution prefer H.264/AAC, which every player handles.
+        sort = ([] if resolution == "best" else [f"res:{resolution}"]) + ["vcodec:h264", "acodec:aac"]
+        format_opts = {"format": "bv*+ba/b", "format_sort": sort, "merge_output_format": "mp4"}
+    else:
+        format_opts = {"format": "bestaudio/best"}
+
     opts: dict = {
-        "format": "bestaudio/best",
+        **format_opts,
         "outtmpl": str(output_dir / OUTPUT_TEMPLATE),
         "allow_playlist_files": False,  # no playlist-level thumbnail/description files
         "postprocessors": postprocessors,
@@ -101,7 +123,7 @@ def build_opts(
         "windowsfilenames": True,  # Windows-safe names on every OS
         "logger": _Logger(verbose),
         "noprogress": not verbose,
-        "progress_hooks": [] if verbose else [_progress_hook],
+        "progress_hooks": [] if verbose else [_progress_hook(ext)],
     }
     if ffmpeg_dir:
         opts["ffmpeg_location"] = str(ffmpeg_dir)
@@ -141,34 +163,34 @@ def _ask(name: str) -> str:
             return _ANSWERS[answer]
 
 
-def _existing_filter(ydl: YoutubeDL, on_exists: str, ask=_ask):
-    """yt-dlp's overwrites=False only looks for the downloaded file (.webm, ...), which is deleted after the
-    conversion, so it would download and re-encode again. Check for the final .mp3 before downloading instead,
-    and skip it or ask (re-encoding over the mp3 is what happens when the filter lets the video through)."""
+def _existing_filter(ydl: YoutubeDL, on_exists: str, ask=_ask, ext: str = "mp3"):
+    """yt-dlp's overwrites=False only looks for the downloaded file(s) (.webm, ...), which are deleted after the
+    conversion/merge, so it would download and process again. Check for the final .<ext> before downloading
+    instead, and skip it or ask (overwriting it is what happens when the filter lets the video through)."""
     mode = on_exists
 
     def match(info: dict, *, incomplete: bool = False) -> str | None:
         nonlocal mode
         if incomplete or not info.get("ext"):
             return None
-        mp3 = Path(ydl.prepare_filename(info)).with_suffix(".mp3")
-        if not mp3.is_file() or mode == "overwrite":
+        final = Path(ydl.prepare_filename(info)).with_suffix(f".{ext}")
+        if not final.is_file() or mode == "overwrite":
             return None
-        choice = ask(mp3.name) if mode == "ask" else "skip"
+        choice = ask(final.name) if mode == "ask" else "skip"
         if choice.endswith(" all"):
             mode = choice.removesuffix(" all")
             choice = mode
         if choice == "overwrite":
-            print(f"  overwriting: {mp3.name}", file=sys.stderr)
+            print(f"  overwriting: {final.name}", file=sys.stderr)
             return None
-        print(f"  skipped (already exists): {mp3.name}", file=sys.stderr)
-        return f"{mp3.name} already exists"
+        print(f"  skipped (already exists): {final.name}", file=sys.stderr)
+        return f"{final.name} already exists"
 
     return match
 
 
-def download(urls: list[str], opts: dict, on_exists: str = "skip") -> Result:
-    """on_exists: what to do when the mp3 is already there ('ask', 'skip', or 'overwrite')."""
+def download(urls: list[str], opts: dict, on_exists: str = "skip", ext: str = "mp3") -> Result:
+    """on_exists: what to do when the final .<ext> file is already there ('ask', 'skip', or 'overwrite')."""
     if on_exists not in ON_EXISTS:
         raise ValueError(f"on_exists must be one of {', '.join(ON_EXISTS)}")
     if opts.get("overwrites"):
@@ -177,7 +199,7 @@ def download(urls: list[str], opts: dict, on_exists: str = "skip") -> Result:
     logger: _Logger = opts["logger"]
     with YoutubeDL(opts) as ydl:
         if on_exists != "overwrite":
-            ydl.params["match_filter"] = _existing_filter(ydl, on_exists)
+            ydl.params["match_filter"] = _existing_filter(ydl, on_exists, ext=ext)
         for url in urls:
             print(f"==> {url}", file=sys.stderr)
             logger.last_error = None
