@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from yt_dlp import YoutubeDL
 
-from ytmp3.downloader import build_opts
+from ytmp3.downloader import _ask, _existing_filter, build_opts, download
 
 
 def _keys(opts):
@@ -79,3 +79,61 @@ def test_long_title_is_truncated_but_keeps_id(tmp_path: Path):
     assert path.name.startswith("027 - Lektion 27")
     assert len(path.parent.name.encode()) <= 80
     assert len(path.name.encode()) <= 160
+
+
+def test_skip_checks_the_final_mp3(tmp_path: Path):
+    with YoutubeDL(build_opts(tmp_path, metadata=False)) as ydl:
+        match = _existing_filter(ydl, "skip")
+        info = {"id": "abc", "title": "Song v1.2", "ext": "webm"}
+        assert match(info) is None
+        (tmp_path / "Song v1.2 [abc].mp3").write_bytes(b"")
+        assert "already exists" in match(info)
+        assert match(info, incomplete=True) is None  # flat playlist entries: not enough info yet
+        playlist = {**info, "playlist_title": "My List", "playlist_index": 7}
+        assert match(playlist) is None
+        (tmp_path / "My List").mkdir()
+        (tmp_path / "My List" / "007 - Song v1.2 [abc].mp3").write_bytes(b"")
+        assert match(playlist) is not None
+
+
+def _existing(tmp_path: Path, n: int) -> list[dict]:
+    infos = [{"id": f"id{i}", "title": f"Song {i}", "ext": "webm"} for i in range(n)]
+    for info in infos:
+        (tmp_path / f"{info['title']} [{info['id']}].mp3").write_bytes(b"")
+    return infos
+
+
+def test_ask_per_file_and_for_all(tmp_path: Path):
+    infos = _existing(tmp_path, 4)
+    answers = iter(["overwrite", "skip", "overwrite all"])
+    asked = []
+
+    def ask(name):
+        asked.append(name)
+        return next(answers)
+
+    with YoutubeDL(build_opts(tmp_path, metadata=False)) as ydl:
+        match = _existing_filter(ydl, "ask", ask)
+        assert [match(i) is None for i in infos] == [True, False, True, True]  # None = let it download
+    assert len(asked) == 3  # "all" stops asking
+
+
+def test_ask_skip_all(tmp_path: Path):
+    infos = _existing(tmp_path, 3)
+    with YoutubeDL(build_opts(tmp_path, metadata=False)) as ydl:
+        match = _existing_filter(ydl, "ask", lambda name: "skip all")
+        assert all(match(i) is not None for i in infos)
+
+
+@pytest.mark.parametrize("typed, expected", [("y\n", "overwrite"), ("\n", "skip"), ("what\nA\n", "overwrite all"),
+                                             ("s\n", "skip all"), ("", "skip")])
+def test_ask_answers(monkeypatch, capsys, typed, expected):
+    import io
+    monkeypatch.setattr("sys.stdin", io.StringIO(typed))
+    assert _ask("x.mp3") == expected
+    assert "already exists: x.mp3" in capsys.readouterr().err
+
+
+def test_overwrite_and_bad_mode(tmp_path: Path):
+    with pytest.raises(ValueError):
+        download([], build_opts(tmp_path), on_exists="maybe")

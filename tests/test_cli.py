@@ -53,3 +53,23 @@ def test_main_bad_cookies_browser_is_setup_error(monkeypatch, capsys):
     monkeypatch.setattr(cli, "resolve_ffmpeg", lambda _: None)
     assert cli.main(["https://x", "--cookies-from-browser", "netscape"]) == cli.EXIT_SETUP
     assert "unsupported browser" in capsys.readouterr().err
+
+
+def test_on_exists_mode(monkeypatch):
+    import io
+
+    parse = cli.build_parser().parse_args
+    assert cli.on_exists_mode(parse(["u", "--overwrite"])) == "overwrite"
+    assert cli.on_exists_mode(parse(["u", "--skip-existing"])) == "skip"
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))  # not a terminal: nobody to ask
+    assert cli.on_exists_mode(parse(["u"])) == "skip"
+
+    class Tty(io.StringIO):
+        def isatty(self):
+            return True
+
+    monkeypatch.setattr("sys.stdin", Tty(""))
+    assert cli.on_exists_mode(parse(["u"])) == "ask"
+    with pytest.raises(SystemExit):
+        parse(["u", "--overwrite", "--skip-existing"])
+

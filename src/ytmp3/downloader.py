@@ -122,10 +122,62 @@ def parse_browser_spec(spec: str) -> tuple:
         raise ValueError(str(e).strip().rpartition("error: ")[2]) from None
 
 
-def download(urls: list[str], opts: dict) -> Result:
+ON_EXISTS = ("ask", "skip", "overwrite")
+_ANSWERS = {"y": "overwrite", "yes": "overwrite", "n": "skip", "no": "skip", "": "skip",
+            "a": "overwrite all", "all": "overwrite all", "s": "skip all", "skip all": "skip all"}
+
+
+def _ask(name: str) -> str:
+    """'overwrite' | 'skip' | 'overwrite all' | 'skip all'. EOF (no one to answer) means skip."""
+    print(f"  already exists: {name}", file=sys.stderr)
+    while True:
+        print("  overwrite? [y]es / [N]o / [a]ll / [s]kip all: ", end="", file=sys.stderr, flush=True)
+        try:
+            answer = input().strip().lower()
+        except EOFError:
+            print(file=sys.stderr)
+            return "skip"
+        if answer in _ANSWERS:
+            return _ANSWERS[answer]
+
+
+def _existing_filter(ydl: YoutubeDL, on_exists: str, ask=_ask):
+    """yt-dlp's overwrites=False only looks for the downloaded file (.webm, ...), which is deleted after the
+    conversion, so it would download and re-encode again. Check for the final .mp3 before downloading instead,
+    and skip it or ask (re-encoding over the mp3 is what happens when the filter lets the video through)."""
+    mode = on_exists
+
+    def match(info: dict, *, incomplete: bool = False) -> str | None:
+        nonlocal mode
+        if incomplete or not info.get("ext"):
+            return None
+        mp3 = Path(ydl.prepare_filename(info)).with_suffix(".mp3")
+        if not mp3.is_file() or mode == "overwrite":
+            return None
+        choice = ask(mp3.name) if mode == "ask" else "skip"
+        if choice.endswith(" all"):
+            mode = choice.removesuffix(" all")
+            choice = mode
+        if choice == "overwrite":
+            print(f"  overwriting: {mp3.name}", file=sys.stderr)
+            return None
+        print(f"  skipped (already exists): {mp3.name}", file=sys.stderr)
+        return f"{mp3.name} already exists"
+
+    return match
+
+
+def download(urls: list[str], opts: dict, on_exists: str = "skip") -> Result:
+    """on_exists: what to do when the mp3 is already there ('ask', 'skip', or 'overwrite')."""
+    if on_exists not in ON_EXISTS:
+        raise ValueError(f"on_exists must be one of {', '.join(ON_EXISTS)}")
+    if opts.get("overwrites"):
+        on_exists = "overwrite"
     result = Result()
     logger: _Logger = opts["logger"]
     with YoutubeDL(opts) as ydl:
+        if on_exists != "overwrite":
+            ydl.params["match_filter"] = _existing_filter(ydl, on_exists)
         for url in urls:
             print(f"==> {url}", file=sys.stderr)
             logger.last_error = None

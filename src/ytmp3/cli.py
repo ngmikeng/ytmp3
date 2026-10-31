@@ -24,7 +24,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-q", "--quality", choices=QUALITIES, default="192", help="MP3 bitrate in kbps (default: 192)")
     p.add_argument("--no-playlist", action="store_true", help="for URLs with both v= and list=, download only the video")
     p.add_argument("--no-metadata", action="store_true", help="skip ID3 tags and cover art")
-    p.add_argument("--overwrite", action="store_true", help="overwrite existing files")
+    exists = p.add_mutually_exclusive_group()
+    exists.add_argument("--overwrite", action="store_true", help="overwrite existing files without asking")
+    exists.add_argument("--skip-existing", action="store_true",
+                        help="skip existing files without asking (default when not run from a terminal)")
     p.add_argument("--ffmpeg", metavar="PATH", help="path to ffmpeg binary or its directory")
     p.add_argument("--cookies-from-browser", metavar="BROWSER[:PROFILE]",
                    help="use cookies from a signed-in browser (firefox, chrome, safari, ...) to get past YouTube's bot check")
@@ -45,6 +48,15 @@ def collect_urls(cli_urls: list[str], file: Path | None) -> list[str]:
     if file:
         urls += read_url_file(file)
     return list(dict.fromkeys(urls))  # de-duplicate, keep order
+
+
+def on_exists_mode(args) -> str:
+    """Ask about existing files only when someone can answer."""
+    if args.overwrite:
+        return "overwrite"
+    if args.skip_existing:
+        return "skip"
+    return "ask" if sys.stdin is not None and sys.stdin.isatty() else "skip"
 
 
 def _utf8_console() -> None:
@@ -97,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_SETUP
     output.mkdir(parents=True, exist_ok=True)
     try:
-        result = download(urls, opts)
+        result = download(urls, opts, on_exists_mode(args))
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         return 130

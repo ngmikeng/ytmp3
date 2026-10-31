@@ -53,11 +53,14 @@ Always put URLs in quotes. `&` and `?` are special characters in zsh and PowerSh
 | `-q, --quality` | `128`, `192` (default), `256` or `320` kbps |
 | `--no-playlist` | For `watch?v=…&list=…` URLs, download only the video |
 | `--no-metadata` | Skip ID3 tags and cover art |
-| `--overwrite` | Re-download files that already exist (they are skipped by default) |
+| `--overwrite` | Re-download files that already exist, without asking |
+| `--skip-existing` | Skip files that already exist, without asking |
 | `--ffmpeg PATH` | Use a specific ffmpeg binary or folder |
 | `--cookies-from-browser BROWSER[:PROFILE]` | Use cookies from a browser you're signed in to YouTube with (`firefox`, `chrome`, `safari`, `edge`, `brave`, ...). Only needed for the bot check below |
 | `--cookies FILE` | Use a Netscape-format `cookies.txt` file instead |
 | `-v, --verbose` | Show full yt-dlp output |
+
+When an MP3 is already there, ytmp3 asks `overwrite? [y]es / [N]o / [a]ll / [s]kip all` (`a`/`s` answer for the rest of a playlist or batch). When it isn't run from a terminal (piped, scheduled, CI) nobody can answer, so existing files are skipped.
 
 Exit codes: `0` means everything succeeded, `1` means some URLs failed (they are listed in the summary), and `2` means a setup error such as no URLs or no ffmpeg.
 
